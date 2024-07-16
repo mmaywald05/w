@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="Maven: org.jcuda:jcuda-natives:windows-x86_64:11.6.1">
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/jcuda/jcuda-natives/11.6.1/jcuda-natives-11.6.1-windows-x86_64.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$MAVEN_REPOSITORY$/org/jcuda/jcuda-natives/11.6.1/jcuda-natives-11.6.1-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/jcuda/jcuda-natives/11.6.1/jcuda-natives-11.6.1-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>
