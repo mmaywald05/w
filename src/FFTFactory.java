@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -65,7 +66,7 @@ public class FFTFactory {
             }
 
 
-            /*
+
             System.out.println("Frequenz (Hz)\tAmplitudenmittelwert");
             for (int i = 0; i < amplitudeSums.length; i++) {
                 double averageAmplitude = amplitudeSums[i] / numBlocks;
@@ -75,7 +76,7 @@ public class FFTFactory {
                 }
             }
 
-             */
+
 
         } catch (UnsupportedAudioFileException | IOException e) {
             System.out.println("Joer`?");
@@ -145,7 +146,7 @@ public class FFTFactory {
                 }
             }
 
-            /*
+
             System.out.println("Frequenz (Hz)\tAmplitudenmittelwert");
             for (int i = 0; i < amplitudeSums.length; i++) {
                 double averageAmplitude = amplitudeSums[i] / numBlocks;
@@ -155,10 +156,79 @@ public class FFTFactory {
                 }
             }
 
-             */
+
 
         } catch (UnsupportedAudioFileException | IOException | ExecutionException | InterruptedException e) {
             System.out.println("fail.");
+            e.printStackTrace();
+        }
+    }
+
+
+    public static void CK_IterativeFFT(String filePath, int blockSize, int offset, double threshold){
+
+        try {
+            AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(new File(filePath));
+            AudioFormat format = audioInputStream.getFormat();
+            int bytesPerFrame = format.getFrameSize();
+            System.out.println("Bit Depth: " + (bytesPerFrame*8));
+            int sampleRate = (int) format.getSampleRate();
+            System.out.println("samplerate: " + sampleRate);
+
+            byte[] audioBytes = readAllBytes(audioInputStream);
+            int numSamples = audioBytes.length / bytesPerFrame;
+            double[] samples = new double[numSamples];
+
+
+
+            for (int i = 0; i < numSamples; i++) {
+                int sampleStart = i * bytesPerFrame;
+                double sample = 0;
+                for (int byteIndex = 0; byteIndex < bytesPerFrame; byteIndex++) {
+                    sample += ((int) audioBytes[sampleStart + byteIndex] << (8 * byteIndex));
+                }
+                samples[i] = sample;
+            }
+
+
+            System.out.println("samples size: " + samples.length);
+
+            // Alle Samples der Datei als Double in samples[]. ||  1 323 000 Samples in Total
+            // NumBlocKs = 42 312
+            int numBlocks = (numSamples - blockSize) / offset + 1;
+
+
+
+            double[] amplitudeSums = new double[blockSize / 2];
+
+            for (int blockIndex = 0; blockIndex < numBlocks; blockIndex++) {
+                int blockStart = blockIndex * offset;
+                double[] real_arr = new double[blockSize];
+                System.arraycopy(samples, blockStart, real_arr, 0, blockSize);
+
+                double[] imaginary_arr = new double[blockSize];
+
+                CoolTuk_iterative(real_arr, imaginary_arr);
+
+                for (int i = 0; i < blockSize / 2; i++) {
+                    double amplitude = Math.sqrt(real_arr[i]*real_arr[i] + imaginary_arr[i] * imaginary_arr[i]);
+                    amplitudeSums[i] += amplitude;
+                }
+            }
+
+
+
+            System.out.println("Frequenz (Hz)\tAmplitudenmittelwert");
+            for (int i = 0; i < amplitudeSums.length; i++) {
+                double averageAmplitude = amplitudeSums[i] / numBlocks;
+                if (averageAmplitude > threshold) {
+                    double frequency = (double) i * sampleRate / blockSize;
+                    System.out.printf("%.2f\t\t%.5f%n", frequency, averageAmplitude);
+                }
+            }
+
+        } catch (UnsupportedAudioFileException | IOException e) {
+            System.out.println("Joer`?");
             e.printStackTrace();
         }
     }
@@ -219,6 +289,57 @@ public class FFTFactory {
             x[2 * i + 1] = even[2 * i + 1] + imag;
             x[2 * (i + n / 2)] = even[2 * i] - real;
             x[2 * (i + n / 2) + 1] = even[2 * i + 1] - imag;
+        }
+    }
+
+
+    // Function to perform Bit-reversal permutation of given array
+    // This is a utility function needed for FFT computation
+    private static void bitReverse(double[] a) {
+        int n = a.length;
+        int j = 0;
+        for (int i = 1; i < n - 1; i++) {
+            int bit = n >> 1;
+            while (j >= bit) {
+                j -= bit;
+                bit >>= 1;
+            }
+            j += bit;
+            if (i < j) {
+                double temp = a[i];
+                a[i] = a[j];
+                a[j] = temp;
+            }
+        }
+    }
+
+    // Cooley-Tukey iterative in-place FFT
+    public static void CoolTuk_iterative(double[] x, double[] y) {
+        // Assume n is a power of 2
+        int n = x.length;
+        bitReverse(x);
+
+        // Compute FFT
+        for (int len = 2; len <= n; len <<= 1) {
+            double angle = 2 * Math.PI / len;
+            double wlenR = Math.cos(angle);
+            double wlenI = Math.sin(angle);
+            for (int i = 0; i < n; i += len) {
+                double wr = 1, wi = 0;
+                for (int j = 0; j < len / 2; j++) {
+                    double tempr = wr * x[i + j + len / 2] - wi * y[i + j + len / 2];
+                    double tempi = wr * y[i + j + len / 2] + wi * x[i + j + len / 2];
+                    double xr = x[i + j];
+                    double xi = y[i + j];
+                    x[i + j] = xr + tempr;
+                    y[i + j] = xi + tempi;
+                    x[i + j + len / 2] = xr - tempr;
+                    y[i + j + len / 2] = xi - tempi;
+                    double temp = wr;
+                    wr = wr * wlenR - wi * wlenI;
+                    wi = temp * wlenI + wi * wlenR;
+                }
+            }
         }
     }
 

@@ -2,8 +2,14 @@ import javax.sound.sampled.*;
 import jcuda.Pointer;
 import jcuda.Sizeof;
 import jcuda.driver.*;
+import static jcuda.driver.JCudaDriver.*;
+import static jcuda.runtime.JCuda.cudaSetDevice;
+
+import jcuda.runtime.JCuda;
+
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 
 
 public class CudaFFT {
@@ -18,8 +24,102 @@ public class CudaFFT {
         System.out.println("Cuda Execution took " + (end-start) + " ms.");
     }
 
-    public static void executeFFTOnWavFile(String wavFilePath, int N, int K, float threshold) {
+    public static void executeFFTOnWavFile(String wavFilePath, int blockSize, int shift, float threshold) {
         // Read the WAV file and extract samples
+
+
+        float[] samples = readWavFile(wavFilePath);
+
+        if (samples == null) {
+            System.err.println("Failed to read the WAV file.");
+            return;
+        }
+        int N = samples.length;
+
+        double[] h_input = new double[2*N];
+
+        for (int i = 0; i < N; i++) {
+            h_input[2*i] = samples[i]; // Real part
+            h_input[2*i+1] = 0;          // Imaginary part
+        }
+
+
+        JCudaDriver.setExceptionsEnabled(true);
+        cudaSetDevice(0);
+
+        // Initialize the driver API
+        JCudaDriver.cuInit(0);
+
+        // Create the context
+        CUcontext context = new CUcontext();
+        CUdevice device = new CUdevice();
+        JCudaDriver.cuDeviceGet(device, 0);
+        JCudaDriver.cuCtxCreate(context, 0, device);
+
+        // Load the PTX file
+        CUmodule module = new CUmodule();
+        String ptxFileName = "C:\\Users\\Morit\\what\\src\\test.ptx";
+        JCudaDriver.cuModuleLoad(module, ptxFileName);
+
+        // Obtain the function pointer to the kernel function
+        CUfunction function = new CUfunction();
+        JCudaDriver.cuModuleGetFunction(function, module, "test");
+
+
+        // Allocate memory on the device for the complex input/output data
+        CUdeviceptr d_input = new CUdeviceptr();
+        cuMemAlloc(d_input, 2*N * Sizeof.DOUBLE);
+
+        // Allocate memory on the device for the amplitude results
+        CUdeviceptr d_output = new CUdeviceptr();
+        cuMemAlloc(d_output, N * Sizeof.DOUBLE);
+
+        // Copy input data from host to device
+        cuMemcpyHtoD(d_input, Pointer.to(h_input), 2*N * Sizeof.DOUBLE);
+
+        // Set the execution parameters
+
+        Pointer kernelParameters = Pointer.to(
+                Pointer.to(d_input),
+                Pointer.to(d_output),
+                Pointer.to(new int[]{N}),
+                Pointer.to(new int[]{blockSize}),
+                Pointer.to(new int[]{shift})
+        );
+
+
+
+        // Launch the FFT and threshold kernel
+        cuLaunchKernel(function,
+                1, 1, 1,      // Grid dimension
+                512, 1, 1, // Block dimension (launching a single block for the setup)
+                0, null,   // Shared memory size and stream
+                kernelParameters, null // Kernel- and extra parameters
+        );
+        cuCtxSynchronize();
+
+        // Copy the results back to the host
+        double[] h_output = new double[N];
+        cuMemcpyDtoH(Pointer.to(h_output), d_output, N * Sizeof.DOUBLE);
+
+        // Process results
+        /*
+        for (int i = 0; i < N; i++) {
+            if (h_output[i] > 0) {
+                System.out.printf("Bin %d: Amplitude = %f\n", i, h_output[i]);
+            }
+        }
+
+         */
+        for(double f: h_output){
+            System.out.print(f+" ");
+        }
+
+        // Clean up
+        cuMemFree(d_input);
+        cuMemFree(d_output);
+        JCudaDriver.cuCtxDestroy(context);
+        /*
         float[] samples = readWavFile(wavFilePath);
 
         if (samples == null) {
@@ -41,6 +141,8 @@ public class CudaFFT {
         CUcontext context = new CUcontext();
         JCudaDriver.cuCtxCreate(context, 0, device);
 
+
+
         // Load the PTX file
         CUmodule module = new CUmodule();
         JCudaDriver.cuModuleLoad(module, "FFT.ptx");
@@ -59,10 +161,11 @@ public class CudaFFT {
         JCudaDriver.cuMemAlloc(d_output_real, totalSamples * Sizeof.FLOAT);
         JCudaDriver.cuMemAlloc(d_output_imag, totalSamples * Sizeof.FLOAT);
 
+
+
         // Copy the input data from host to device
         JCudaDriver.cuMemcpyHtoD(d_input_real, Pointer.to(input_real), totalSamples * Sizeof.FLOAT);
         JCudaDriver.cuMemcpyHtoD(d_input_imag, Pointer.to(input_imag), totalSamples * Sizeof.FLOAT);
-
 
         // Number of blocks to process
         int numBlocks = (totalSamples - N) / K + 1;
@@ -78,7 +181,7 @@ public class CudaFFT {
         );
 
         // Launch the kernel
-        int blockSize = 256;
+        int blockSize = 1024;
         JCudaDriver.cuLaunchKernel(function,
                 numBlocks, 1, 1, // Grid dimension
                 blockSize, 1, 1, // Block dimension
@@ -96,6 +199,8 @@ public class CudaFFT {
         // Process the output (average amplitude, etc.)
         // You can implement your averaging logic here...
 
+
+
         // Clean up
         JCudaDriver.cuMemFree(d_input_real);
         JCudaDriver.cuMemFree(d_input_imag);
@@ -103,13 +208,18 @@ public class CudaFFT {
         JCudaDriver.cuMemFree(d_output_imag);
         JCudaDriver.cuCtxDestroy(context);
 
-        System.out.println("Execution Done. Outpu:");
+        System.out.println("Execution Done. Output:");
         System.out.println("nReal: " + output_real.length + " | nImag: " + output_imag.length);
         float[] results = complexAbs(output_real, output_imag);
+        int counter = 0;
+
         for (float f : results){
-            System.out.println(f);
+                System.out.println(++counter +": " +f);
         }
+
+         */
     }
+
 
 
     public static float[] complexAbs(float[] real, float[] imag){

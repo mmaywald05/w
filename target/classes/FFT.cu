@@ -24,8 +24,8 @@ __device__ void exp_i(float theta, float *real, float *imag) {
 }
 
 __global__ void fft_kernel(float* input_real, float* input_imag, float* output_real, float* output_imag, int N, int K, int totalSamples) {
-    int blockId = blockIdx.x;
-    int startIdx = blockId * K;
+    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    int startIdx = threadId * K;
 
     if (startIdx + N <= totalSamples) {
         for (int m = 2; m <= N; m <<= 1) {
