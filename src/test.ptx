@@ -10,7 +10,7 @@
 .target sm_52
 .address_size 64
 
-	// .globl	_Z4testPdS_iii
+	// .globl	test
 .extern .func  (.param .b64 func_retval0) malloc
 (
 	.param .b64 malloc_param_0
@@ -25,46 +25,47 @@
 .global .align 8 .b8 __cudart_sin_cos_coeffs[128] = {186, 94, 120, 249, 101, 219, 229, 61, 70, 210, 176, 44, 241, 229, 90, 190, 146, 227, 172, 105, 227, 29, 199, 62, 161, 98, 219, 25, 160, 1, 42, 191, 24, 8, 17, 17, 17, 17, 129, 63, 84, 85, 85, 85, 85, 85, 197, 191, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 129, 253, 32, 131, 255, 168, 189, 40, 133, 239, 193, 167, 238, 33, 62, 217, 230, 6, 142, 79, 126, 146, 190, 233, 188, 221, 25, 160, 1, 250, 62, 71, 93, 193, 22, 108, 193, 86, 191, 81, 85, 85, 85, 85, 85, 165, 63, 0, 0, 0, 0, 0, 0, 224, 191, 0, 0, 0, 0, 0, 0, 240, 63};
 .global .align 8 .b8 __cudart_i2opi_d[144] = {8, 93, 141, 31, 177, 95, 251, 107, 234, 146, 82, 138, 247, 57, 7, 61, 123, 241, 229, 235, 199, 186, 39, 117, 45, 234, 95, 158, 102, 63, 70, 79, 183, 9, 203, 39, 207, 126, 54, 109, 31, 109, 10, 90, 139, 17, 47, 239, 15, 152, 5, 222, 255, 151, 248, 31, 59, 40, 249, 189, 139, 95, 132, 156, 244, 57, 83, 131, 57, 214, 145, 57, 65, 126, 95, 180, 38, 112, 156, 233, 132, 68, 187, 46, 245, 53, 130, 232, 62, 167, 41, 177, 28, 235, 29, 254, 28, 146, 209, 9, 234, 46, 73, 6, 224, 210, 77, 66, 58, 110, 36, 183, 97, 197, 187, 222, 171, 99, 81, 254, 65, 144, 67, 60, 153, 149, 98, 219, 192, 221, 52, 245, 209, 87, 39, 252, 41, 21, 68, 78, 110, 131, 249, 162};
 
-.visible .entry _Z4testPdS_iii(
-	.param .u64 _Z4testPdS_iii_param_0,
-	.param .u64 _Z4testPdS_iii_param_1,
-	.param .u32 _Z4testPdS_iii_param_2,
-	.param .u32 _Z4testPdS_iii_param_3,
-	.param .u32 _Z4testPdS_iii_param_4
+.visible .entry test(
+	.param .u64 test_param_0,
+	.param .u64 test_param_1,
+	.param .u32 test_param_2
 )
 {
 	.reg .pred 	%p<2>;
-	.reg .b32 	%r<7>;
-	.reg .b64 	%rd<6>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<2>;
+	.reg .b64 	%rd<8>;
 
 
-	ld.param.u64 	%rd1, [_Z4testPdS_iii_param_1];
-	ld.param.u32 	%r2, [_Z4testPdS_iii_param_2];
+	ld.param.u64 	%rd1, [test_param_0];
+	ld.param.u64 	%rd2, [test_param_1];
+	ld.param.u32 	%r2, [test_param_2];
 	mov.u32 	%r3, %ctaid.x;
 	mov.u32 	%r4, %ntid.x;
-	add.s32 	%r5, %r3, %r4;
-	mov.u32 	%r6, %tid.x;
-	add.s32 	%r1, %r5, %r6;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
 	@%p1 bra 	$L__BB0_2;
 
-	cvta.to.global.u64 	%rd2, %rd1;
-	mul.wide.s32 	%rd3, %r1, 8;
-	add.s64 	%rd4, %rd2, %rd3;
-	mov.u64 	%rd5, 4636737291354636288;
-	st.global.u64 	[%rd4], %rd5;
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f64 	%fd1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.f64 	[%rd7], %fd1;
 
 $L__BB0_2:
 	ret;
 
 }
-	// .globl	_Z3fftPdS_iii
-.visible .entry _Z3fftPdS_iii(
-	.param .u64 _Z3fftPdS_iii_param_0,
-	.param .u64 _Z3fftPdS_iii_param_1,
-	.param .u32 _Z3fftPdS_iii_param_2,
-	.param .u32 _Z3fftPdS_iii_param_3,
-	.param .u32 _Z3fftPdS_iii_param_4
+	// .globl	fft
+.visible .entry fft(
+	.param .u64 fft_param_0,
+	.param .u64 fft_param_1,
+	.param .u32 fft_param_2,
+	.param .u32 fft_param_3,
+	.param .u32 fft_param_4
 )
 {
 	.local .align 4 .b8 	__local_depot1[8];
@@ -78,23 +79,23 @@ $L__BB0_2:
 
 	mov.u64 	%SPL, __local_depot1;
 	cvta.local.u64 	%SP, %SPL;
-	ld.param.u64 	%rd35, [_Z3fftPdS_iii_param_0];
-	ld.param.u32 	%r52, [_Z3fftPdS_iii_param_2];
-	ld.param.u32 	%r53, [_Z3fftPdS_iii_param_3];
-	ld.param.u32 	%r54, [_Z3fftPdS_iii_param_4];
+	ld.param.u64 	%rd35, [fft_param_0];
+	ld.param.u32 	%r52, [fft_param_2];
+	ld.param.u32 	%r53, [fft_param_3];
+	ld.param.u32 	%r54, [fft_param_4];
 	cvta.to.global.u64 	%rd1, %rd35;
 	add.u64 	%rd3, %SPL, 0;
 	add.u64 	%rd4, %SPL, 4;
 	mov.u32 	%r55, %ntid.x;
 	mov.u32 	%r56, %ctaid.x;
-	add.s32 	%r57, %r56, %r55;
-	mov.u32 	%r58, %tid.x;
-	add.s32 	%r1, %r57, %r58;
+	mov.u32 	%r57, %tid.x;
+	mad.lo.s32 	%r1, %r56, %r55, %r57;
 	setp.ge.s32 	%p2, %r1, %r52;
 	@%p2 bra 	$L__BB1_50;
 
 	mul.lo.s32 	%r2, %r1, %r54;
-	add.s32 	%r3, %r2, %r53;
+	add.s32 	%r58, %r53, %r2;
+	add.s32 	%r3, %r58, -1;
 	mul.wide.s32 	%rd39, %r52, 8;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;
@@ -120,7 +121,7 @@ $L__BB0_2:
 	);
 	ld.param.b64 	%rd6, [retval0+0];
 	} // callseq 1
-	setp.lt.s32 	%p3, %r53, 1;
+	setp.lt.s32 	%p3, %r53, 2;
 	@%p3 bra 	$L__BB1_7;
 
 	add.s32 	%r59, %r2, 1;
@@ -627,8 +628,8 @@ $L__BB1_41:
 	@%p27 bra 	$L__BB1_15;
 
 $L__BB1_43:
-	ld.param.u32 	%r96, [_Z3fftPdS_iii_param_3];
-	setp.lt.s32 	%p33, %r96, 1;
+	ld.param.u32 	%r96, [fft_param_3];
+	setp.lt.s32 	%p33, %r96, 2;
 	@%p33 bra 	$L__BB1_50;
 
 	add.s32 	%r89, %r2, 1;
@@ -639,7 +640,7 @@ $L__BB1_43:
 	mov.u32 	%r124, %r2;
 	@%p29 bra 	$L__BB1_47;
 
-	ld.param.u64 	%rd74, [_Z3fftPdS_iii_param_1];
+	ld.param.u64 	%rd74, [fft_param_1];
 	cvta.to.global.u64 	%rd73, %rd74;
 	mul.wide.s32 	%rd68, %r2, 8;
 	add.s64 	%rd83, %rd73, %rd68;
@@ -670,7 +671,7 @@ $L__BB1_47:
 	setp.lt.u32 	%p31, %r92, 3;
 	@%p31 bra 	$L__BB1_50;
 
-	ld.param.u64 	%rd76, [_Z3fftPdS_iii_param_1];
+	ld.param.u64 	%rd76, [fft_param_1];
 	cvta.to.global.u64 	%rd75, %rd76;
 	mul.wide.s32 	%rd69, %r124, 8;
 	add.s64 	%rd70, %rd69, 16;

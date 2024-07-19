@@ -1,5 +1,7 @@
-extern "C"
+
 #define PI 3.14159265359
+
+extern "C"{
 __device__ void bitReverse(double* a, int n) {
     int j = 0;
     for (int i = 1; i < n - 1; i++) {
@@ -18,10 +20,10 @@ __device__ void bitReverse(double* a, int n) {
 }
 
 __global__ void test(double* input, double*output, int N, int blockSize, int shift){
-  int threadId = blockIdx.x  + blockDim.x + threadIdx.x;
-  if (threadId <N){
-        output[threadId] = 100;
-  }
+      int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+      if (threadId <N){
+            output[threadId] = input[threadId];
+      }
 }
 
 /*
@@ -32,11 +34,11 @@ Block Size: Size of Block to be processed
 Shift: After each block
 */
 __global__ void fft(double* input, double*output, int N, int blockSize, int shift){
-    int threadId = blockIdx.x  + blockDim.x + threadIdx.x;
+    int threadId = blockIdx.x  * blockDim.x + threadIdx.x;
 
     if(threadId < N){
         int startIndex = threadId * shift;
-        int endIndex = startIndex + blockSize;
+        int endIndex = startIndex + blockSize-1 ;
 
         double* input_real = (double*) malloc(N*sizeof(double));
         double* input_imaginary = (double*) malloc(N*sizeof(double));
@@ -80,3 +82,4 @@ __global__ void fft(double* input, double*output, int N, int blockSize, int shif
     }
 }
 
+}
