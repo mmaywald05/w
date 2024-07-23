@@ -4,8 +4,8 @@ public class Constants {
     static int THREADS_PER_BLOCK = 1024;
     static dim3 BLOCK_DIM = new dim3(1024,1024,64);
     static dim3 GRID_DIM =  new dim3(2147483647, 65535, 65535);
-    static int SHARED_MEMORY_PER_BLOCK = 49152;
-    static int CONSTANT_MEMORY = 65536;
+    static int SHARED_MEMORY_PER_BLOCK = 49152; //Byte
+    static int CONSTANT_MEMORY = 65536; //Byte
 }
 class dim3{
     int x,y,z;

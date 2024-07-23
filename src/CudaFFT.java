@@ -41,7 +41,7 @@ public class CudaFFT {
         double[] h_input = new double[2*N];
 
         for (int i = 0; i < N; i++) {
-            h_input[2*i] = samples[i]; // Real part
+            h_input[2*i] =10; // Real part
             h_input[2*i+1] = 0;          // Imaginary part
         }
 
@@ -65,7 +65,7 @@ public class CudaFFT {
 
         // Obtain the function pointer to the kernel function
         CUfunction function = new CUfunction();
-        JCudaDriver.cuModuleGetFunction(function, module, "fft");
+        JCudaDriver.cuModuleGetFunction(function, module, "sharedTest");
 
 
         /*
@@ -136,6 +136,15 @@ public class CudaFFT {
 
          */
 
+        double[] h_output = new double[N];
+
+        int blockCount = (int) Math.floor((N-blockSize)/shift)+1;
+
+        System.out.println("Input Length "+ h_input.length);
+        System.out.println("Output length " + h_output.length);
+        System.out.println("N: "+ N);
+        System.out.println("block size: "+ blockSize);
+        System.out.println("Shift: "+ shift);
 
         // Allocate memory on the device for the complex input/output data
         CUdeviceptr d_input = new CUdeviceptr();
@@ -155,38 +164,43 @@ public class CudaFFT {
                 Pointer.to(d_output),
                 Pointer.to(new int[]{N}),
                 Pointer.to(new int[]{blockSize}),
-                Pointer.to(new int[]{shift})
+                Pointer.to(new int[]{shift}),
+                Pointer.to(new int[]{blockCount})
         );
-
-
-
+        
+        System.out.println("Blocks: " + blockCount);
         // Launch the FFT and threshold kernel
         cuLaunchKernel(function,
-                1, 1, 1,      // Grid dimension
-                512, 1, 1, // Block dimension (launching a single block for the setup)
+                64, 1, 1,      // Grid dimension
+                1024, 1, 1, // Block dimension (launching a single block for the setup)
                 0, null,   // Shared memory size and stream
                 kernelParameters, null // Kernel- and extra parameters
         );
         cuCtxSynchronize();
 
         // Copy the results back to the host
-        double[] h_output = new double[N];
         cuMemcpyDtoH(Pointer.to(h_output), d_output, N * Sizeof.DOUBLE);
 
         // Process results
-        //displayResults(h_output);
-
-        for(double f: h_output){
-            System.out.print(f+" ");
+        for (int i = 0; i < 4096; i++) {
+            System.out.print(h_output[i]+ " ");
         }
+
+
+        int countVals = 0;
+        for(double d: h_output){
+            if(d > 0){
+                countVals++;
+            }
+        }
+        System.out.println("Values Higher than 0: "+ countVals);
 
         // Clean up
         cuMemFree(d_input);
         cuMemFree(d_output);
         JCudaDriver.cuCtxDestroy(context);
-
-
     }
+
     public static void displayResults(double[] amplitudes){
         for (int i = 0; i < amplitudes.length; i++) {
             if (amplitudes[i] > 0) {
