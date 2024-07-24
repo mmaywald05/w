@@ -8,7 +8,7 @@ public class main {
 
 
     public static void main(String[] args) {
-        String filePath = "chrissi.wav";
+        String filePath = "Chrissi.wav";
         int blockSize = 1024;
         int offset = 64;
         double threshold = (0.0d);
