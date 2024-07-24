@@ -46,30 +46,28 @@ public class FFTFactory {
 
         int numCores = Runtime.getRuntime().availableProcessors();
         ExecutorService executor = Executors.newFixedThreadPool(numCores);
-        List<Future<float[]>> futures = new ArrayList<>();
+        List<Future<?>> futures = new ArrayList<>();
+        float[] magnitudes = new float[blockSize];
+
 
         for (int blockIndex = 0; blockIndex < numBlocks; blockIndex++) {
             final int startIndex = blockIndex * shift;
-            futures.add(executor.submit(() -> {;
-                Complex[] block = new Complex[blockSize];
-                System.arraycopy(input, startIndex, block, 0, blockSize);
-                return parallel_blockwise_dft_instance(block);
-            }));
+            futures.add(
+                    executor.submit(() -> {
+                        Complex[] block = new Complex[blockSize];
+                        System.arraycopy(input, startIndex, block, 0, blockSize);
+                        parallel_blockwise_dft_instance(block, magnitudes, numBlocks);
+                    }));
         }
 
-        float[] magnitudes = new float[blockSize];
 
-        // Ergebnisse sammeln
-        for (Future<float[]> future : futures) {
-            float[] fftResult = future.get();
-            for (int i = 0; i < blockSize; i++) {
-                magnitudes[i] += fftResult[i];
-            }
+
+        // auf cores warten
+        System.out.println("Waiting for futures");
+        for (Future<?> future : futures) {
+            future.get();
         }
-        // Durchschnitt
-        for (int i = 0; i < magnitudes.length; i++) {
-            magnitudes[i] = magnitudes[i] / numBlocks;
-        }
+
         // Normalisieren
         normalizeMagnitudes(magnitudes);
         // ausgabe
@@ -140,9 +138,9 @@ public class FFTFactory {
         }
     }
 
-    public static float[] parallel_blockwise_dft_instance(Complex[] input) {
+    public static void parallel_blockwise_dft_instance(Complex[] input,   float[] magnitudes, int numBlocks) {
         int N = input.length;
-        float[] magnitudes = new float[N];
+
 
         for (int i = 0; i < N; i++) {
             Complex number = new Complex(0f,0f);
@@ -152,10 +150,9 @@ public class FFTFactory {
                 w = Complex.multiply(input[j], w);
                 number = Complex.add(number, w);
             }
-            float mag = Complex.magnitude(number);
+            float mag = Complex.magnitude(number) / numBlocks;
             magnitudes[i] += mag;
         }
-        return magnitudes;
     }
 
 
