@@ -165,6 +165,55 @@ public class FFTFactory {
     }
 
 
+    public static Complex[] loadSamplesAsComplex (String filePath){
+
+        try {
+            AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(new File(filePath));
+            AudioFormat format = audioInputStream.getFormat();
+            int bytesPerFrame = format.getFrameSize();
+            System.out.println("Bit Depth: " + (bytesPerFrame*8));
+            int sampleRate = (int) format.getSampleRate();
+            System.out.println("samplerate: " + sampleRate);
+
+            byte[] audioBytes = readAllBytes(audioInputStream);
+            int numSamples = audioBytes.length / bytesPerFrame;
+            double[] samples = new double[numSamples];
+
+
+            double maxSample= 0;
+            double minSample = Double.MAX_VALUE;
+
+
+            for (int i = 0; i < numSamples; i++) {
+                int sampleStart = i * bytesPerFrame;
+                double sample = 0;
+                for (int byteIndex = 0; byteIndex < bytesPerFrame; byteIndex++) {
+                    sample += ((int) audioBytes[sampleStart + byteIndex] << (8 * byteIndex));
+                }
+                if(sample>maxSample)
+                    maxSample = sample;
+
+                if(sample < minSample)
+                    minSample=sample;
+
+                samples[i] = sample;
+            }
+
+            Complex[] complex = new Complex[samples.length];
+            for (int i = 0; i < samples.length; i++) {
+                complex[i] = new Complex((float) ((2*(samples[i]-minSample)/(maxSample-minSample))-1), 0);
+
+            }
+
+            return complex;
+        } catch (UnsupportedAudioFileException | IOException e) {
+            System.out.println("Error reading file`?");
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+
     public static void CK_IterativeFFT(String filePath, int blockSize, int offset, double threshold){
 
         try {
@@ -263,6 +312,66 @@ public class FFTFactory {
         return output;
     }
 
+
+    public static void DFT_SEQ(String filePath, int blockSize, int shift, double threshold) {
+
+        Complex[] input = loadSamplesAsComplex(filePath);
+
+
+        int N = input.length;
+
+
+
+        for (int i = 0; i < 50; i++) {
+            System.out.println(input[i].x);
+        }
+
+        float[] avgMagnitudes = new float[N];
+
+        int numBlocks = (N - blockSize) / shift + 1 ;
+
+        for (int blockIndex = 0; blockIndex < numBlocks; blockIndex++){
+            int blockStart = blockIndex * shift;
+            Complex[] block = new Complex[blockSize];
+            float[] blockMagnitudes = new float[blockSize];
+
+            System.arraycopy(input, blockStart, block, 0, blockSize);
+
+            DFT(block, blockMagnitudes, N, blockSize, shift, numBlocks);
+
+            for (int i = 0; i <blockSize; i++) {
+                avgMagnitudes[i] += blockMagnitudes[i];
+            }
+        }
+
+
+        for (int i = 0; i < blockSize; i++) {
+            avgMagnitudes[i] /= numBlocks;
+        }
+
+
+        for (int i = 0; i < blockSize; i++) {
+            System.out.println("Bin: " + i + " Magnitude = " + avgMagnitudes[i]);
+        }
+
+
+
+    }
+
+    private static void DFT(Complex[] input, float[] magnitudes, int N, int k, int s, int numBlocks){
+        for (int i= 0; i < input.length; i++){
+            Complex number = new Complex(0,0);
+            for (int j = 0; j < input.length; j++){
+                double angle = 2*Math.PI*i*j / input.length;
+                Complex w = new Complex((float)Math.cos(angle),(float)-Math.sin(angle));
+                Complex product = Complex.multiply(input[j], w);
+                number = Complex.add(number, product);
+            }
+            float mag = Complex.magnitude(number)/numBlocks;
+            magnitudes[i] += mag;
+        }
+    }
+
     private static void fftRecursive(double[] x, int n) {
         if (n <= 1) return;
 
@@ -340,6 +449,31 @@ public class FFTFactory {
                     wi = temp * wlenI + wi * wlenR;
                 }
             }
+        }
+    }
+
+    public static class Complex {
+        float x;
+        float y;
+
+
+        public Complex(float x, float y){
+            this.x = x;
+            this.y = y;
+        }
+
+        public float x(){ return this.x;}
+        public float y(){return this.y;}
+
+        public static Complex add(Complex a, Complex b){
+            return new Complex(a.x + b.x, a.y + b.y);
+
+        }
+        public static Complex multiply(Complex a, Complex b){
+            return new Complex(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+        }
+        public static float magnitude(Complex a){
+            return (float) Math.sqrt(a.x * a.x + a.y * a.y);
         }
     }
 

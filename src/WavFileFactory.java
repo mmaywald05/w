@@ -94,7 +94,7 @@ public class WavFileFactory {
     }
 
     public static void main(String[] args) {
-        WavFileFactory.createSilentWav("chrissi", 600, 110);
+        WavFileFactory.createSilentWav("short210", 60, 210);
 
     }
 }

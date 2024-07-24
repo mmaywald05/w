@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <vector>
 #include <chrono>
+#include <thrust/complex.h>
+
 
 using namespace std::chrono;
 #define M_PI 3.14159265359
@@ -55,45 +57,51 @@ __global__ void dftKernel(const Complex* input, Complex* output, int N, int k, i
     }
 }
 
+__device__ __host__ Complex make_complex(float real, float imag) {
+    Complex c;
+    c.x = real;
+    c.y = imag;
+    return c;
+}
+
+__device__ __host__ Complex complex_add(const Complex& a, const Complex& b) {
+    return make_complex(a.x + b.x, a.y + b.y);
+}
+
+__device__ __host__ Complex complex_mul(const Complex& a, const Complex& b) {
+    return make_complex(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+__device__ __host__ float complex_mag(const Complex& c) {
+    return sqrtf(c.x * c.x + c.y * c.y);
+}
+
+
 __global__ void mydftkernel(const Complex* input, float* magnitudes, int N, int k, int s, int numBlocks){
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int startIndex = tid * s;
     int endIndex = startIndex + k;
 
-    if(tid < k){
-        magnitudes[tid] = 0.0;
-    }
-
     __syncthreads();
 
     if(tid < numBlocks){
         for(int i = startIndex; i < endIndex; ++i){
-            Complex number = make_float2(0,0);
+            Complex number = make_complex(0,0);
             for(int j = startIndex; j < endIndex; ++j){
                 double angle = 2 * M_PI * i * j / k;
-                Complex w = make_float2(cosf(angle), -sinf(angle));
-                Complex sum = make_float2(
-                    (input[j].x * w.x - input[j].y * w.y),
-                    (input[j].x * w.y + input[j].y * w.x )
-                    );
+                Complex w = make_complex(cosf(angle), -sinf(angle));
+                Complex prod = complex_mul(input[j], w);
+                number = complex_add(number, prod);
 
                 // das hier ist kritisch, ich glaube das geht so nicht, besser die magnituden hier ausrechnen und einfach so übergeben
-                number.x = number.x + sum.x;
-                number.y = number.y + sum.y;
             }
-            float magn = sqrtf(number.x*number.x + number.y * number.y);
-            atomicAdd(&magnitudes[i], magn);
+            float mag = complex_mag(number)/numBlocks;
+             // Print the magnitude before it is added to the magnitudes array for debugging
+            atomicAdd(&magnitudes[(i-startIndex)], mag);
         }
     }
 }
 
-__global__ void magnitudeKernel(const Complex* input, float* magnitudes, int k) {
-    int tid = threadIdx.x;  // Index within the block (frequency bin)
-
-    if (tid < k) {
-        magnitudes[tid] = sqrtf(input[tid].x * input[tid].x + input[tid].y * input[tid].y);
-    }
-}
 void computeDFTBlocks(const Complex* h_input, float* h_magnitudes, int N, int k, int s) {
     int numBlocks = (N - k) / s + 1;  // Calculate the number of blocks
 
@@ -110,12 +118,13 @@ void computeDFTBlocks(const Complex* h_input, float* h_magnitudes, int N, int k,
 
     // Copy input data to device
     cudaMemcpy(d_input, h_input, N * sizeof(Complex), cudaMemcpyHostToDevice);
-
+    cudaMemset(d_magnitudes, 0, k * sizeof(float));
     // Launch the DFT kernel with enough blocks and threads to cover all frequency bins
 
 
 
     mydftkernel<<<1024, 1024>>>(d_input, d_magnitudes, N, k, s, numBlocks);
+    cudaDeviceSynchronize();
 
     // Launch the magnitude kernel
     //magnitudeKernel<<<1, blockSize>>>(d_output, d_magnitudes, k);
@@ -167,6 +176,50 @@ void readWavFile(const std::string &filePath, std::vector<float> &samples, int &
     }
 }
 
+void plotHistogram(const float* values, int numSamples, int height) {
+    if (numSamples <= 0 || height <= 0) {
+        std::cerr << "Number of samples and height must be positive integers." << std::endl;
+        return;
+    }
+
+    // Calculate the maximum value in the array for scaling
+    float maxValue = 0.0f;
+    for (int i = 0; i < numSamples; ++i) {
+        if (values[i] > maxValue) {
+            maxValue = values[i];
+        }
+    }
+
+    // Draw histogram from top to bottom
+    for (int row = height - 1; row >= 0; --row) {
+        float threshold = (static_cast<float>(row) / height) * maxValue;
+
+        for (int col = 0; col < numSamples; ++col) {
+            if (values[col] >= threshold) {
+                std::cout << "*";
+            } else {
+                std::cout << ".";
+            }
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
+}
+
+void saveArrayToFile(const float* values, int numSamples, const std::string& filename) {
+    std::ofstream outFile(filename); // Create an output file stream
+
+    if (!outFile) {
+        std::cerr << "Error: Could not open file for writing." << std::endl;
+        return;
+    }
+
+    for (int i = 0; i < numSamples; ++i) {
+        outFile << values[i] << std::endl; // Write each value on a new line
+    }
+
+    outFile.close(); // Close the file stream
+}
 
 int main(int argc, char *argv[]) {
     auto start = high_resolution_clock::now();
@@ -188,6 +241,11 @@ int main(int argc, char *argv[]) {
     for (int n = 0; n < N; ++n) {
         h_input[n].x = samples[n];
         h_input[n].y = 0.0f;
+
+    }
+
+    for(int i = 0; i < 50 ; ++i){
+        std::cout << h_input[i].x << std::endl;
     }
 
 
@@ -201,11 +259,70 @@ int main(int argc, char *argv[]) {
     // Print the magnitudes of the frequency bins
     std::cout << "k = Blocksize = " << k << std::endl;
 
+
+
+
+    int pos, neg,zero;
+    float max = 0;
+    float min = FLT_MAX;
+    int maxIndex = 0;
+    int minIndex = 0;
+
+    pos =0; neg=0;zero=0;
+    for(int i = 0; i < k; ++i){
+        if(h_magnitudes[i] > 0){
+            ++pos;
+        }else if (h_magnitudes[i] < 0){
+            ++neg;
+        }else{
+            ++zero;
+        }
+
+        if(h_magnitudes[i]  > max){
+            max = h_magnitudes[i];
+            maxIndex = i;
+        }
+        if(h_magnitudes[i]< min ){
+            minIndex = i;
+            min = h_magnitudes[i];
+        }
+
+
+    }
+    for(int i =0;  i< k; ++i){
+        h_magnitudes[i] = (h_magnitudes[i]-min)/(max-min);
+    }
     for(int i =0; i < k ; ++i){
-        printf("Frequency bin %d: Magnitude = %f\n", i, h_magnitudes[i]/numBlocks);
+
+        printf("Frequency bin %d: Magnitude = %f\n", i, h_magnitudes[i]);
+    }
+    std::cout << "positive: " << pos << std::endl;
+    std::cout << "negative: " << neg << std::endl;
+    std::cout << "zero: " << zero << std::endl;
+
+    std::cout << "max: " << maxIndex << "->" << max <<  " | min: "<< minIndex << "->"  << min << std::endl;
+
+    //plotHistogram(h_magnitudes, k, 10);
+
+    saveArrayToFile(h_magnitudes, k, "magnitudes.txt");
+
+    for(int i = 0; i < k; ++i){
+        double frequency = i * sampleRate / k;
+        printf("Frequency %f: Magnitude = %f\n", frequency, h_magnitudes[i]);
     }
 
+
     /*
+
+
+     System.out.println("Frequenz (Hz)\tAmplitudenmittelwert");
+            for (int i = 0; i < amplitudeSums.length; i++) {
+                double averageAmplitude = amplitudeSums[i] / numBlocks;
+                if (averageAmplitude > threshold) {
+                    double frequency = (double) i * sampleRate / blockSize;
+                    System.out.printf("%.2f\t\t%.5f%n", frequency, averageAmplitude);
+                }
+            }
     for (int k = 0; k < N; ++k) {
         printf("Frequency bin %d: Magnitude = %f\n", k, h_magnitudes[k]);
     }
@@ -220,6 +337,7 @@ int main(int argc, char *argv[]) {
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop - start);
     std::cout <<"CUDA FFT took "<< duration.count()/1000 << "ms." << std::endl;
+
 
     return 0;
 }

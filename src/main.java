@@ -8,20 +8,20 @@ public class main {
 
 
     public static void main(String[] args) {
-        String filePath = "Chrissi.wav";
-        int blockSize = 1024;
+        String filePath = "short210.wav";
+        int blockSize = 512;
         int offset = 64;
         double threshold = (0.0d);
 
 
         long start_seq = System.currentTimeMillis();
-        FFTFactory.FFT_SEQ(filePath, blockSize, offset, threshold);
+        FFTFactory.DFT_SEQ(filePath, blockSize, offset, threshold);
         long end_seq = System.currentTimeMillis();
 
         long seqTime = end_seq - start_seq;
 
 
-
+/*
 
         System.out.println("Initializing parallel execution");
         long start_cpu = System.currentTimeMillis();
@@ -29,9 +29,11 @@ public class main {
         long end_cpu = System.currentTimeMillis();
         long cpuTime = end_cpu- start_cpu;
 
+ */
+
         System.out.println("Sequential Execution took " + seqTime +"ms");
 
-        System.out.println("Parallel CPU Execution took " + cpuTime +"ms");
+       // System.out.println("Parallel CPU Execution took " + cpuTime +"ms");
 
 
 /*
