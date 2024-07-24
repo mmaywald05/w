@@ -12,21 +12,21 @@
 using namespace std::chrono;
 #define M_PI 3.14159265359
 
-struct WAVHeader {
-    char riff[4];        // "RIFF"
-    int overall_size;    // File size minus 8 bytes
-    char wave[4];        // "WAVE"
-    char fmt_chunk_marker[4];  // "fmt "
-    int length_of_fmt;   // Length of format data (usually 16)
-    short format_type;   // Format type (1 is PCM)
-    short channels;      // Number of channels
-    int sample_rate;     // Sampling rate (blocks per second)
-    int byterate;        // Bytes per second
-    short block_align;   // 2=16-bit mono, 4=16-bit stereo
-    short bits_per_sample; // Number of bits per sample
-    char data_chunk_header[4]; // "data"
-    int data_size;       // Size of data
-};
+typedef struct {
+    char    ChunkID[4];
+    int32_t ChunkSize;
+    char    Format[4];
+    char    Subchunk1ID[4];
+    int32_t Subchunk1Size;
+    int16_t AudioFormat;
+    int16_t NumChannels;
+    int32_t SampleRate;
+    int32_t ByteRate;
+    int16_t BlockAlign;
+    int16_t BitsPerSample;
+    char    Subchunk2ID[4];
+    int32_t Subchunk2Size;
+} WavHeader;
 
 // Define a complex number type
 typedef float2 Complex;
@@ -52,7 +52,6 @@ __global__ void dftKernel(const Complex* input, Complex* output, int N, int k, i
             sum.x += tempSum.x;
             sum.y += tempSum.y;
         }
-
         output[tid] = make_float2(sum.x / numBlocks, sum.y / numBlocks);
     }
 }
@@ -81,8 +80,6 @@ __global__ void mydftkernel(const Complex* input, float* magnitudes, int N, int 
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int startIndex = tid * s;
     int endIndex = startIndex + k;
-
-    __syncthreads();
 
     if(tid < numBlocks){
         for(int i = startIndex; i < endIndex; ++i){
@@ -139,73 +136,6 @@ void computeDFTBlocks(const Complex* h_input, float* h_magnitudes, int N, int k,
 
 
 
-void readWavFile(const std::string &filePath, std::vector<float> &samples, int &sampleRate) {
-    std::ifstream file(filePath, std::ios::binary);
-    if (!file) {
-        std::cerr << "Error opening file: " << filePath << std::endl;
-        exit(1);
-    }
-
-    WAVHeader header;
-    file.read(reinterpret_cast<char*>(&header), sizeof(WAVHeader));
-
-    if (std::strncmp(header.riff, "RIFF", 4) != 0 || std::strncmp(header.wave, "WAVE", 4) != 0) {
-        std::cerr << "Invalid WAV file format" << std::endl;
-        exit(1);
-    }
-
-    sampleRate = header.sample_rate;
-    int numSamples = header.data_size / (header.bits_per_sample / 8);
-    samples.resize(numSamples);
-
-    if (header.bits_per_sample == 16) {
-        std::vector<short> tempSamples(numSamples);
-        file.read(reinterpret_cast<char*>(tempSamples.data()), header.data_size);
-        for (int i = 0; i < numSamples; ++i) {
-            samples[i] = tempSamples[i] / 32768.0f;
-        }
-    } else if (header.bits_per_sample == 8) {
-        std::vector<unsigned char> tempSamples(numSamples);
-        file.read(reinterpret_cast<char*>(tempSamples.data()), header.data_size);
-        for (int i = 0; i < numSamples; ++i) {
-            samples[i] = tempSamples[i] / 128.0f - 1.0f;
-        }
-    } else {
-        std::cerr << "Unsupported bit depth: " << header.bits_per_sample << std::endl;
-        exit(1);
-    }
-}
-
-void plotHistogram(const float* values, int numSamples, int height) {
-    if (numSamples <= 0 || height <= 0) {
-        std::cerr << "Number of samples and height must be positive integers." << std::endl;
-        return;
-    }
-
-    // Calculate the maximum value in the array for scaling
-    float maxValue = 0.0f;
-    for (int i = 0; i < numSamples; ++i) {
-        if (values[i] > maxValue) {
-            maxValue = values[i];
-        }
-    }
-
-    // Draw histogram from top to bottom
-    for (int row = height - 1; row >= 0; --row) {
-        float threshold = (static_cast<float>(row) / height) * maxValue;
-
-        for (int col = 0; col < numSamples; ++col) {
-            if (values[col] >= threshold) {
-                std::cout << "*";
-            } else {
-                std::cout << ".";
-            }
-        }
-        std::cout << std::endl;
-    }
-    std::cout << std::endl;
-}
-
 void saveArrayToFile(const float* values, int numSamples, const std::string& filename) {
     std::ofstream outFile(filename); // Create an output file stream
 
@@ -221,13 +151,65 @@ void saveArrayToFile(const float* values, int numSamples, const std::string& fil
     outFile.close(); // Close the file stream
 }
 
+std::vector<float> readWav(const std::string& filePath, int &sampleRate) {
+      std::ifstream file(filePath, std::ios::binary);
+      WavHeader header;
+
+      if (!file.read(reinterpret_cast<char*>(&header), sizeof(WavHeader))) {
+          throw std::runtime_error("Failed to read WAV file header.");
+      }
+
+      if (strncmp(header.ChunkID, "RIFF", 4) != 0 || strncmp(header.Format, "WAVE", 4) != 0) {
+          throw std::runtime_error("File is not a valid WAV file.");
+      }
+
+      if (header.AudioFormat != 1) {
+          throw std::runtime_error("Unsupported audio format. Only PCM format supported.");
+      }
+
+      if (header.BitsPerSample != 16) {
+          throw std::runtime_error("Unsupported sample size. Only 16-bit samples supported.");
+      }
+
+      int sampleCount = header.Subchunk2Size / sizeof(int16_t);
+      sampleRate = header.SampleRate;
+
+    sampleCount = header.Subchunk2Size / sizeof(int16_t);
+    std::vector<int16_t> buffer(sampleCount);
+
+       file.read(reinterpret_cast<char*>(buffer.data()), header.Subchunk2Size);
+
+      file.close();
+
+      std::vector<float> samples(buffer.size());
+
+    // Convert int16_t samples to float and normalize to [-1, 1]
+     float maxAbsValue = 0;
+     for (size_t i = 0; i < buffer.size(); ++i) {
+        samples[i] = static_cast<float>(buffer[i]) / std::numeric_limits<int16_t>::max();
+        if (std::abs(samples[i]) > maxAbsValue) {
+            maxAbsValue = std::abs(samples[i]);
+        }
+     }
+
+    if (maxAbsValue > 0) {
+        for (size_t i = 0; i < sampleCount; ++i) {
+            samples[i] /= maxAbsValue;
+        }
+    }
+
+    return samples;
+}
+
+
 int main(int argc, char *argv[]) {
     auto start = high_resolution_clock::now();
     std::string filePath = argv[1];
-    std::vector<float> samples;
-    int sampleRate;
-    readWavFile(filePath, samples, sampleRate);
 
+    int sampleRate;
+    std::vector<float> samples = readWav(filePath, sampleRate);
+
+    //readWavFile(filePath, samples, sampleRate);
     int N = samples.size();;  // Number of source file samples
     int k = 512;    // blocksize
     int s = 64;     // shift
@@ -243,12 +225,6 @@ int main(int argc, char *argv[]) {
         h_input[n].y = 0.0f;
 
     }
-
-    for(int i = 0; i < 50 ; ++i){
-        std::cout << h_input[i].x << std::endl;
-    }
-
-
 
 
     std::cout << "Starting DFT...";
@@ -270,6 +246,8 @@ int main(int argc, char *argv[]) {
 
     pos =0; neg=0;zero=0;
     for(int i = 0; i < k; ++i){
+        h_magnitudes[i] = h_magnitudes[i] / numBlocks;
+
         if(h_magnitudes[i] > 0){
             ++pos;
         }else if (h_magnitudes[i] < 0){
@@ -292,42 +270,20 @@ int main(int argc, char *argv[]) {
     for(int i =0;  i< k; ++i){
         h_magnitudes[i] = (h_magnitudes[i]-min)/(max-min);
     }
-    for(int i =0; i < k ; ++i){
 
-        printf("Frequency bin %d: Magnitude = %f\n", i, h_magnitudes[i]);
-    }
-    std::cout << "positive: " << pos << std::endl;
-    std::cout << "negative: " << neg << std::endl;
-    std::cout << "zero: " << zero << std::endl;
-
-    std::cout << "max: " << maxIndex << "->" << max <<  " | min: "<< minIndex << "->"  << min << std::endl;
-
-    //plotHistogram(h_magnitudes, k, 10);
 
     saveArrayToFile(h_magnitudes, k, "magnitudes.txt");
+
+/*
+    for(int i = 0; i < k;  ++i){
+        h_magnitudes[i] = std::round(h_magnitudes[i]*100)/100;
+    }
+    */
 
     for(int i = 0; i < k; ++i){
         double frequency = i * sampleRate / k;
         printf("Frequency %f: Magnitude = %f\n", frequency, h_magnitudes[i]);
     }
-
-
-    /*
-
-
-     System.out.println("Frequenz (Hz)\tAmplitudenmittelwert");
-            for (int i = 0; i < amplitudeSums.length; i++) {
-                double averageAmplitude = amplitudeSums[i] / numBlocks;
-                if (averageAmplitude > threshold) {
-                    double frequency = (double) i * sampleRate / blockSize;
-                    System.out.printf("%.2f\t\t%.5f%n", frequency, averageAmplitude);
-                }
-            }
-    for (int k = 0; k < N; ++k) {
-        printf("Frequency bin %d: Magnitude = %f\n", k, h_magnitudes[k]);
-    }
-    */
-
 
     // Free host memory
     free(h_input);
@@ -336,7 +292,7 @@ int main(int argc, char *argv[]) {
 
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop - start);
-    std::cout <<"CUDA FFT took "<< duration.count()/1000 << "ms." << std::endl;
+    std::cout <<"GPU DFT took "<< duration.count()/1000 << "ms." << std::endl;
 
 
     return 0;

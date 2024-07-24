@@ -2,6 +2,7 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
+import java.awt.event.ComponentListener;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -168,44 +169,16 @@ public class FFTFactory {
     public static Complex[] loadSamplesAsComplex (String filePath){
 
         try {
-            AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(new File(filePath));
-            AudioFormat format = audioInputStream.getFormat();
-            int bytesPerFrame = format.getFrameSize();
-            System.out.println("Bit Depth: " + (bytesPerFrame*8));
-            int sampleRate = (int) format.getSampleRate();
-            System.out.println("samplerate: " + sampleRate);
+            float[] samples = WavFileFactory.readWavFile(filePath);
 
-            byte[] audioBytes = readAllBytes(audioInputStream);
-            int numSamples = audioBytes.length / bytesPerFrame;
-            double[] samples = new double[numSamples];
-
-
-            double maxSample= 0;
-            double minSample = Double.MAX_VALUE;
-
-
-            for (int i = 0; i < numSamples; i++) {
-                int sampleStart = i * bytesPerFrame;
-                double sample = 0;
-                for (int byteIndex = 0; byteIndex < bytesPerFrame; byteIndex++) {
-                    sample += ((int) audioBytes[sampleStart + byteIndex] << (8 * byteIndex));
-                }
-                if(sample>maxSample)
-                    maxSample = sample;
-
-                if(sample < minSample)
-                    minSample=sample;
-
-                samples[i] = sample;
-            }
 
             Complex[] complex = new Complex[samples.length];
             for (int i = 0; i < samples.length; i++) {
-                complex[i] = new Complex((float) ((2*(samples[i]-minSample)/(maxSample-minSample))-1), 0);
-
+                complex[i] = new Complex(samples[i], 0);
             }
 
             return complex;
+
         } catch (UnsupportedAudioFileException | IOException e) {
             System.out.println("Error reading file`?");
             e.printStackTrace();
@@ -316,59 +289,72 @@ public class FFTFactory {
     public static void DFT_SEQ(String filePath, int blockSize, int shift, double threshold) {
 
         Complex[] input = loadSamplesAsComplex(filePath);
-
-
         int N = input.length;
-
-
-
-        for (int i = 0; i < 50; i++) {
-            System.out.println(input[i].x);
-        }
-
-        float[] avgMagnitudes = new float[N];
-
+        float[] avgMagnitudes = new float[blockSize];
         int numBlocks = (N - blockSize) / shift + 1 ;
 
+        blockwise_DFT(input, avgMagnitudes, N, blockSize, shift, numBlocks);
+        /*
+        System.out.println("Starting Sequential DFT on CPU");
         for (int blockIndex = 0; blockIndex < numBlocks; blockIndex++){
             int blockStart = blockIndex * shift;
             Complex[] block = new Complex[blockSize];
             float[] blockMagnitudes = new float[blockSize];
 
             System.arraycopy(input, blockStart, block, 0, blockSize);
-
             DFT(block, blockMagnitudes, N, blockSize, shift, numBlocks);
 
             for (int i = 0; i <blockSize; i++) {
-                avgMagnitudes[i] += blockMagnitudes[i];
+                avgMagnitudes[i] += blockMagnitudes[i] / numBlocks;
             }
         }
 
 
-        for (int i = 0; i < blockSize; i++) {
-            avgMagnitudes[i] /= numBlocks;
+         */
+
+        normalizeMagnitudes(avgMagnitudes);
+
+        try {
+            WavFileFactory.writeFloatArrayToFile(avgMagnitudes,"javamag.txt");
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-
-
-        for (int i = 0; i < blockSize; i++) {
-            System.out.println("Bin: " + i + " Magnitude = " + avgMagnitudes[i]);
+        for (int i = 0; i < avgMagnitudes.length; i++) {
+            System.out.println("Bin: " + i + " Magnitude = " + (avgMagnitudes[i]));
         }
-
-
-
     }
 
     private static void DFT(Complex[] input, float[] magnitudes, int N, int k, int s, int numBlocks){
-        for (int i= 0; i < input.length; i++){
-            Complex number = new Complex(0,0);
-            for (int j = 0; j < input.length; j++){
-                double angle = 2*Math.PI*i*j / input.length;
-                Complex w = new Complex((float)Math.cos(angle),(float)-Math.sin(angle));
+        for (int i= 0; i < input.length; i++) {
+            Complex number = new Complex(0, 0);
+            for (int j = 0; j < input.length; j++) {
+                double angle = 2 * Math.PI * i * j / input.length;
+                Complex w = new Complex((float) Math.cos(angle), (float) -Math.sin(angle));
                 Complex product = Complex.multiply(input[j], w);
                 number = Complex.add(number, product);
             }
-            float mag = Complex.magnitude(number)/numBlocks;
+            float mag = Complex.magnitude(number);
             magnitudes[i] += mag;
+        }
+    }
+
+    private static void blockwise_DFT(Complex[] input, float[] magnitudes, int N, int k, int s, int numBlocks){
+
+        for (int blockId = 0; blockId < numBlocks; blockId++) {
+            int startIndex = blockId * s;
+            int endIndex = startIndex + k;
+            for (int i = startIndex; i < endIndex; i++) {
+                Complex number = new Complex(0f, 0f);
+                for (int j = startIndex; j < endIndex; j++) {
+                    double angle = 2 * Math.PI * i * j / k;
+                    Complex w = new Complex(Math.cos(angle), Math.cos(angle));
+                    w = Complex.multiply(input[j], w);
+                    number = Complex.add(number, w);
+                }
+
+                float mag = Complex.magnitude(number) / numBlocks;
+                magnitudes[i-startIndex] += mag;
+            }
         }
     }
 
@@ -401,9 +387,6 @@ public class FFTFactory {
         }
     }
 
-
-    // Function to perform Bit-reversal permutation of given array
-    // This is a utility function needed for FFT computation
     private static void bitReverse(double[] a) {
         int n = a.length;
         int j = 0;
@@ -422,7 +405,7 @@ public class FFTFactory {
         }
     }
 
-    // Cooley-Tukey iterative in-place FFT
+    // Cooley-Tukey FFT aber iterativ
     public static void CoolTuk_iterative(double[] x, double[] y) {
         // Assume n is a power of 2
         int n = x.length;
@@ -452,14 +435,32 @@ public class FFTFactory {
         }
     }
 
+    public static void normalizeMagnitudes(float[] magnitudes){
+        float max = Float.MIN_VALUE;
+        float min = Float.MAX_VALUE;
+
+        for (int i = 0; i < magnitudes.length; i++) {
+            if(magnitudes[i] < min)
+                min = magnitudes[i];
+            if(magnitudes[i] > max)
+                max = magnitudes[i];
+        }
+        for (int i = 0; i < magnitudes.length; i++) {
+            magnitudes[i] = (magnitudes[i]-min)/(max-min);
+        }
+    }
+
     public static class Complex {
         float x;
         float y;
 
-
         public Complex(float x, float y){
             this.x = x;
             this.y = y;
+        }
+        public Complex(double x, double y){
+            this.x = (float) x;
+            this.y = (float) y;
         }
 
         public float x(){ return this.x;}
@@ -467,7 +468,6 @@ public class FFTFactory {
 
         public static Complex add(Complex a, Complex b){
             return new Complex(a.x + b.x, a.y + b.y);
-
         }
         public static Complex multiply(Complex a, Complex b){
             return new Complex(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
@@ -476,5 +476,4 @@ public class FFTFactory {
             return (float) Math.sqrt(a.x * a.x + a.y * a.y);
         }
     }
-
 }
